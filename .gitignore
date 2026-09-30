@@ -1,0 +1,36 @@
+# Environment / secrets
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Node
+**/node_modules/
+**/dist/
+**/coverage/
+# Logs
+*.log
+npm-debug.log*
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+# Temporary files
+*.tmp
+*.temp
+*.bak
+.postman/
+postman/
+
+# Runtime uploads
+backend/uploads/
+backend/compliance_uploads/
+
+# Local debug / working notes
+backend/asset-upload-backend.txt
+backend/object-storage-backend.txt
+frontend/problem-pages.txt
+
+# Local frontend backup archives
+frontend/step*.zip

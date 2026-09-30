@@ -1,0 +1,374 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ======================================================
+// ENUMS
+// ======================================================
+
+enum CampaignRole {
+  MAKER
+  CHECKER
+  ADMIN
+}
+
+enum AssetVersionStatus {
+  DRAFT
+  SCORING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  RELEASED
+}
+
+enum ScoringJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum CheckType {
+  FOREIGN_LOGO
+  BRAND_COMPLIANCE
+  MAS_ADVERTISING
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+enum CheckDecision {
+  ACCEPT_AI
+  OVERRIDE_PASS
+  OVERRIDE_FAIL
+}
+
+enum ComplianceDocumentType {
+  FOREIGN_LOGO_POLICY
+  BRAND_GUIDELINE
+  MAS_RULES
+}
+
+// ======================================================
+// USER
+// ======================================================
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaignsOwned      Campaign[]       @relation("CampaignOwner")
+  campaignMemberships CampaignMember[]
+
+  assetsCreated    Asset[]        @relation("AssetCreator")
+  versionsUploaded AssetVersion[] @relation("VersionUploader")
+
+  reviews       Review[]       @relation("ReviewChecker")
+  releases      Release[]      @relation("ReleaseAdmin")
+  notifications Notification[]
+
+  complianceDocumentsUploaded ComplianceDocument[] @relation("ComplianceDocumentUploader")
+
+  auditLogs AuditLog[]
+}
+
+// ======================================================
+// CAMPAIGN
+// ======================================================
+
+model Campaign {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  deadline    DateTime?
+
+  ownerId Int
+  owner   User @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members CampaignMember[]
+  assets  Asset[]
+
+  complianceDocuments ComplianceDocument[]
+  notifications       Notification[]
+}
+
+// ======================================================
+// CAMPAIGN MEMBER
+// ======================================================
+
+model CampaignMember {
+  id Int @id @default(autoincrement())
+
+  campaignId Int
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role CampaignRole
+
+  createdAt DateTime @default(now())
+
+  @@unique([campaignId, userId])
+}
+
+// ======================================================
+// ASSET
+// ======================================================
+
+model Asset {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+
+  campaignId Int
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  createdById Int
+  createdBy   User @relation("AssetCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions AssetVersion[]
+}
+
+// ======================================================
+// ASSET VERSION
+// ======================================================
+
+model AssetVersion {
+  id Int @id @default(autoincrement())
+
+  versionNumber Int
+
+  fileName String
+  fileUrl  String
+  mimeType String?
+  fileSize Int?
+
+  status AssetVersionStatus @default(DRAFT)
+
+  assetId Int
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  uploadedById Int
+  uploadedBy   User @relation("VersionUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scoringJobs    ScoringJob[]
+  aiCheckResults AiCheckResult[]
+  reviews        Review[]
+
+  release Release?
+
+  @@unique([assetId, versionNumber])
+}
+
+// ======================================================
+// SCORING JOB
+// ======================================================
+
+model ScoringJob {
+  id Int @id @default(autoincrement())
+
+  assetVersionId Int
+  assetVersion   AssetVersion @relation(fields: [assetVersionId], references: [id], onDelete: Cascade)
+
+  status ScoringJobStatus @default(PENDING)
+
+  retryCount   Int     @default(0)
+  errorMessage String?
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  results AiCheckResult[]
+}
+
+// ======================================================
+// AI CHECK RESULT
+// ======================================================
+
+model AiCheckResult {
+  id Int @id @default(autoincrement())
+
+  assetVersionId Int
+  assetVersion   AssetVersion @relation(fields: [assetVersionId], references: [id], onDelete: Cascade)
+
+  scoringJobId Int
+  scoringJob   ScoringJob @relation(fields: [scoringJobId], references: [id], onDelete: Cascade)
+
+  checkType CheckType
+
+  score         Int
+  reason        String
+  ruleReference String?
+  sourceQuote   String?
+  uncertainty   String?
+
+  modelName     String?
+  modelVersion  String?
+  promptVersion String?
+
+  createdAt DateTime @default(now())
+
+  reviewDecisions ReviewCheckDecision[]
+
+  @@unique([scoringJobId, checkType])
+}
+
+// ======================================================
+// REVIEW
+// ======================================================
+
+model Review {
+  id Int @id @default(autoincrement())
+
+  assetVersionId Int
+  assetVersion   AssetVersion @relation(fields: [assetVersionId], references: [id], onDelete: Cascade)
+
+  checkerId Int
+  checker   User @relation("ReviewChecker", fields: [checkerId], references: [id], onDelete: Restrict)
+
+  decision ReviewDecision
+  comment  String?
+
+  createdAt DateTime @default(now())
+
+  checkDecisions ReviewCheckDecision[]
+}
+
+// ======================================================
+// REVIEW CHECK DECISION
+// ======================================================
+
+model ReviewCheckDecision {
+  id Int @id @default(autoincrement())
+
+  reviewId Int
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  aiCheckResultId Int
+  aiCheckResult   AiCheckResult @relation(fields: [aiCheckResultId], references: [id], onDelete: Restrict)
+
+  decision CheckDecision
+  comment  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, aiCheckResultId])
+}
+
+// ======================================================
+// RELEASE
+// ======================================================
+
+model Release {
+  id Int @id @default(autoincrement())
+
+  assetVersionId Int          @unique
+  assetVersion   AssetVersion @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+
+  releasedById Int
+  releasedBy   User @relation("ReleaseAdmin", fields: [releasedById], references: [id], onDelete: Restrict)
+
+  releasedAt DateTime @default(now())
+  note       String?
+}
+
+// ======================================================
+// NOTIFICATION
+// ======================================================
+
+model Notification {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  campaignId Int
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  type    String @default("ASSET_RELEASED")
+  title   String
+  message String
+
+  assetId        Int?
+  assetVersionId Int?
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt])
+  @@index([campaignId, createdAt])
+}
+
+// ======================================================
+// AUDIT LOG
+// ======================================================
+
+model AuditLog {
+  id Int @id @default(autoincrement())
+
+  action     String
+  entityType String
+  entityId   Int?
+  details    String?
+
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+}
+
+// ======================================================
+// COMPLIANCE DOCUMENT
+// ======================================================
+
+model ComplianceDocument {
+  id           Int                    @id @default(autoincrement())
+  title        String
+  documentType ComplianceDocumentType
+  version      String
+
+  fileName String
+  fileUrl  String
+  mimeType String?
+  fileSize Int?
+
+  openaiFileId String @unique
+
+  isActive Boolean @default(true)
+
+  campaignId Int?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  uploadedById Int?
+  uploadedBy   User? @relation("ComplianceDocumentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([campaignId, documentType, version])
+  @@index([campaignId, documentType, isActive])
+}
