@@ -95,6 +95,12 @@ export class ScoringService {
       );
     }
 
+    if (campaign.archivedAt) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before starting or retrying scoring.',
+      );
+    }
+
     return version;
   }
 
@@ -742,6 +748,12 @@ export class ScoringService {
 
     const campaign =
       job.assetVersion.asset.campaign;
+
+    if (campaign.archivedAt) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before retrying scoring.',
+      );
+    }
 
     const isOwner =
       campaign.ownerId ===
