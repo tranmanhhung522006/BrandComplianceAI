@@ -121,7 +121,25 @@ export function CampaignsPage() {
   ])
 
   const totalAssets =
-    assets.length
+    useMemo(() => {
+      const visibleCampaignIds =
+        new Set(
+          campaigns.map(
+            (campaign) =>
+              campaign.id,
+          ),
+        )
+
+      return assets.filter(
+        (asset) =>
+          visibleCampaignIds.has(
+            asset.campaignId,
+          ),
+      ).length
+    }, [
+      assets,
+      campaigns,
+    ])
 
   const campaignsWithAssets =
     useMemo(() => {
