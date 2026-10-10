@@ -51,12 +51,17 @@ export class AssetsService {
 
   async findAll(
     userId: number,
+    includeArchived = false,
   ) {
     const campaigns =
       await this.prisma.campaign.findMany({
         where: {
-          archivedAt:
-            null,
+          ...(includeArchived
+            ? {}
+            : {
+                archivedAt:
+                  null,
+              }),
 
           OR: [
             {
