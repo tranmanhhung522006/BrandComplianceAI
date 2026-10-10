@@ -73,6 +73,9 @@ export class ComplianceDocumentsService {
           ownerId:
             true,
 
+          archivedAt:
+            true,
+
           members: {
             where: {
               userId,
@@ -166,6 +169,12 @@ export class ComplianceDocumentsService {
     ) {
       throw new ForbiddenException(
         'Only campaign owner or Admin can manage compliance documents',
+      );
+    }
+
+    if (campaign.archivedAt) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before changing compliance documents.',
       );
     }
 
