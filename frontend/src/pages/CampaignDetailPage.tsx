@@ -479,6 +479,15 @@ export function CampaignDetailPage() {
       return
     }
 
+    if (
+      !campaign.archivedAt &&
+      !window.confirm(
+        "Archive this campaign? Its history will be preserved, but workflow actions will be disabled until it is restored.",
+      )
+    ) {
+      return
+    }
+
     try {
       setArchiveSaving(true)
       setError(null)
