@@ -95,12 +95,6 @@ export class ScoringService {
       );
     }
 
-    if (campaign.archivedAt) {
-      throw new BadRequestException(
-        'Archived campaign is read-only. Restore it before starting or retrying scoring.',
-      );
-    }
-
     return version;
   }
 
@@ -143,6 +137,16 @@ export class ScoringService {
           `AssetVersion ${versionId} not found`,
         );
       }
+    }
+
+    if (
+      userId !== undefined &&
+      'asset' in version &&
+      version.asset.campaign.archivedAt
+    ) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before starting scoring.',
+      );
     }
 
     if (
