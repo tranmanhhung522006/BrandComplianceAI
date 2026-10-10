@@ -101,6 +101,14 @@ export class ReviewsService {
     }
 
     if (
+      version.asset.campaign.archivedAt
+    ) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before reviewing asset versions.',
+      );
+    }
+
+    if (
       version.status !==
       AssetVersionStatus.IN_REVIEW
     ) {
@@ -381,6 +389,11 @@ export class ReviewsService {
 
           role:
             CampaignRole.CHECKER,
+
+          campaign: {
+            archivedAt:
+              null,
+          },
         },
 
         select: {

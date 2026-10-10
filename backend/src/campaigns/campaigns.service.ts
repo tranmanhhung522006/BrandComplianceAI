@@ -26,9 +26,24 @@ export class CampaignsService {
     private readonly prisma: PrismaService,
   ) {}
 
-  findAll(userId: number) {
+  findAll(
+    userId: number,
+    archived: boolean | null = false,
+  ) {
     return this.prisma.campaign.findMany({
       where: {
+        ...(archived === null
+          ? {}
+          : archived
+            ? {
+                archivedAt: {
+                  not: null,
+                },
+              }
+            : {
+                archivedAt: null,
+              }),
+
         OR: [
           {
             ownerId: userId,
@@ -832,6 +847,7 @@ export class CampaignsService {
   private async getManageableCampaign(
     campaignId: number,
     actorUserId: number,
+    allowArchived = false,
   ) {
     const campaign =
       await this.prisma.campaign.findUnique({
@@ -876,7 +892,214 @@ export class CampaignsService {
       );
     }
 
+    if (
+      campaign.archivedAt &&
+      !allowArchived
+    ) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before making changes.',
+      );
+    }
+
     return campaign;
+  }
+
+
+  async archiveCampaign(
+    campaignId: number,
+    actorUserId: number,
+  ) {
+    this.validateCampaignId(
+      campaignId,
+    );
+
+    const campaign =
+      await this.getManageableCampaign(
+        campaignId,
+        actorUserId,
+        true,
+      );
+
+    if (campaign.archivedAt) {
+      return {
+        message:
+          'Campaign is already archived',
+        campaign,
+      };
+    }
+
+    const archivedAt =
+      new Date();
+
+    const updated =
+      await this.prisma.$transaction(
+        async (tx) => {
+          const result =
+            await tx.campaign.update({
+              where: {
+                id:
+                  campaignId,
+              },
+
+              data: {
+                archivedAt,
+              },
+
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                  },
+                },
+
+                members: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        email: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+
+          await tx.auditLog.create({
+            data: {
+              action:
+                'CAMPAIGN_ARCHIVED',
+
+              entityType:
+                'Campaign',
+
+              entityId:
+                campaignId,
+
+              userId:
+                actorUserId,
+
+              details:
+                JSON.stringify({
+                  campaignId,
+                  archivedAt,
+                }),
+            },
+          });
+
+          return result;
+        },
+      );
+
+    return {
+      message:
+        'Campaign archived successfully',
+      campaign:
+        updated,
+    };
+  }
+
+  async restoreCampaign(
+    campaignId: number,
+    actorUserId: number,
+  ) {
+    this.validateCampaignId(
+      campaignId,
+    );
+
+    const campaign =
+      await this.getManageableCampaign(
+        campaignId,
+        actorUserId,
+        true,
+      );
+
+    if (!campaign.archivedAt) {
+      return {
+        message:
+          'Campaign is already active',
+        campaign,
+      };
+    }
+
+    const previousArchivedAt =
+      campaign.archivedAt;
+
+    const updated =
+      await this.prisma.$transaction(
+        async (tx) => {
+          const result =
+            await tx.campaign.update({
+              where: {
+                id:
+                  campaignId,
+              },
+
+              data: {
+                archivedAt:
+                  null,
+              },
+
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                  },
+                },
+
+                members: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        email: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+
+          await tx.auditLog.create({
+            data: {
+              action:
+                'CAMPAIGN_RESTORED',
+
+              entityType:
+                'Campaign',
+
+              entityId:
+                campaignId,
+
+              userId:
+                actorUserId,
+
+              details:
+                JSON.stringify({
+                  campaignId,
+                  previousArchivedAt,
+                  restoredAt:
+                    new Date(),
+                }),
+            },
+          });
+
+          return result;
+        },
+      );
+
+    return {
+      message:
+        'Campaign restored successfully',
+      campaign:
+        updated,
+    };
   }
 
   private parseRole(

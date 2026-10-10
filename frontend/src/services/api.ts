@@ -93,9 +93,46 @@ export interface AuditLogRecord {
   [key: string]: unknown
 }
 
-export function getCampaigns() {
+export function getCampaigns(
+  archived: boolean | "all" = false,
+) {
+  const query =
+    archived === "all"
+      ? "?archived=all"
+      : archived
+        ? "?archived=true"
+        : ""
+
   return request<BackendCampaign[]>(
-    "/campaigns",
+    `/campaigns${query}`,
+  )
+}
+
+export function archiveCampaign(
+  campaignId: number,
+) {
+  return request<{
+    message: string
+    campaign: BackendCampaign
+  }>(
+    `/campaigns/${campaignId}/archive`,
+    {
+      method: "PATCH",
+    },
+  )
+}
+
+export function restoreCampaign(
+  campaignId: number,
+) {
+  return request<{
+    message: string
+    campaign: BackendCampaign
+  }>(
+    `/campaigns/${campaignId}/restore`,
+    {
+      method: "PATCH",
+    },
   )
 }
 
@@ -124,9 +161,13 @@ export function updateCampaign(
   )
 }
 
-export function getAssets() {
+export function getAssets(
+  includeArchived = false,
+) {
   return request<BackendAsset[]>(
-    "/assets",
+    includeArchived
+      ? "/assets?includeArchived=true"
+      : "/assets",
   )
 }
 

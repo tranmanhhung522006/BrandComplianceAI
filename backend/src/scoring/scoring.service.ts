@@ -140,6 +140,16 @@ export class ScoringService {
     }
 
     if (
+      userId !== undefined &&
+      'asset' in version &&
+      version.asset.campaign.archivedAt
+    ) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before starting scoring.',
+      );
+    }
+
+    if (
       version.status !==
       AssetVersionStatus.DRAFT
     ) {
@@ -742,6 +752,12 @@ export class ScoringService {
 
     const campaign =
       job.assetVersion.asset.campaign;
+
+    if (campaign.archivedAt) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before retrying scoring.',
+      );
+    }
 
     const isOwner =
       campaign.ownerId ===

@@ -51,10 +51,18 @@ export class AssetsService {
 
   async findAll(
     userId: number,
+    includeArchived = false,
   ) {
     const campaigns =
       await this.prisma.campaign.findMany({
         where: {
+          ...(includeArchived
+            ? {}
+            : {
+                archivedAt:
+                  null,
+              }),
+
           OR: [
             {
               ownerId:
@@ -171,6 +179,12 @@ export class AssetsService {
     if (!campaign) {
       throw new NotFoundException(
         'Campaign not found',
+      );
+    }
+
+    if (campaign.archivedAt) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before creating assets.',
       );
     }
 
@@ -525,6 +539,12 @@ export class AssetsService {
     if (!asset) {
       throw new NotFoundException(
         'Asset not found',
+      );
+    }
+
+    if (asset.campaign.archivedAt) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before uploading a new asset version.',
       );
     }
 

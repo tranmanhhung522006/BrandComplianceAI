@@ -58,6 +58,7 @@ export interface BackendCampaign {
   name: string
   description?: string | null
   deadline?: string | null
+  archivedAt?: string | null
   ownerId: number
   createdAt: string
   updatedAt: string

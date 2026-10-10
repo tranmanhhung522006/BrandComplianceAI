@@ -446,7 +446,7 @@ export function AssetDetailPage() {
           }
 
           const assets =
-            await getAssets()
+            await getAssets(true)
 
           const selectedAsset =
             assets.find(

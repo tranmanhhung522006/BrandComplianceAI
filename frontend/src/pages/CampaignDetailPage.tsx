@@ -6,6 +6,7 @@ import {
 
 import {
   ArrowLeft,
+  Archive,
   ArrowRight,
   Bell,
   BellRing,
@@ -18,6 +19,7 @@ import {
   Layers3,
   Pencil,
   Plus,
+  RotateCcw,
   Save,
   UserRound,
   Users,
@@ -47,11 +49,13 @@ import {
 } from "@/lib/assets"
 
 import {
+  archiveCampaign,
   getAssets,
   getCampaigns,
   getComplianceDocuments,
   getReleaseNotifications,
   markReleaseNotificationRead,
+  restoreCampaign,
   updateCampaign,
 } from "@/services/api"
 
@@ -170,6 +174,12 @@ export function CampaignDetailPage() {
     useState(false)
 
   const [
+    archiveSaving,
+    setArchiveSaving,
+  ] =
+    useState(false)
+
+  const [
     editName,
     setEditName,
   ] =
@@ -221,8 +231,12 @@ export function CampaignDetailPage() {
           notificationData,
         ] =
           await Promise.all([
-            getCampaigns(),
-            getAssets(),
+            getCampaigns(
+              "all",
+            ),
+            getAssets(
+              true,
+            ),
             getComplianceDocuments(
               numericCampaignId,
             ),
@@ -457,6 +471,52 @@ export function CampaignDetailPage() {
     }
   }
 
+  async function handleArchiveToggle() {
+    if (
+      !campaign ||
+      !canEdit
+    ) {
+      return
+    }
+
+    if (
+      !campaign.archivedAt &&
+      !window.confirm(
+        "Archive this campaign? Its history will be preserved, but workflow actions will be disabled until it is restored.",
+      )
+    ) {
+      return
+    }
+
+    try {
+      setArchiveSaving(true)
+      setError(null)
+
+      const result =
+        campaign.archivedAt
+          ? await restoreCampaign(
+              campaign.id,
+            )
+          : await archiveCampaign(
+              campaign.id,
+            )
+
+      setCampaign(
+        result.campaign,
+      )
+
+      setEditing(false)
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to update campaign archive status.",
+      )
+    } finally {
+      setArchiveSaving(false)
+    }
+  }
+
   function cancelEdit() {
     if (!campaign) {
       return
@@ -572,6 +632,13 @@ export function CampaignDetailPage() {
         </div>
       )}
 
+      {campaign.archivedAt && (
+        <div className="mb-6 rounded-xl border border-slate-300 bg-slate-100 p-4 text-sm text-slate-700">
+          <strong>Archived campaign.</strong>{" "}
+          This campaign is preserved for audit and history. Restore it before creating assets, uploading versions, changing members, scoring, reviewing, releasing or modifying compliance documents.
+        </div>
+      )}
+
       <section className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-start">
         <div>
           <p className="mb-2 text-sm font-medium text-blue-600">
@@ -616,46 +683,78 @@ export function CampaignDetailPage() {
         </div>
 
         <div className="flex w-fit flex-wrap gap-3">
+          {canEdit &&
+            !campaign.archivedAt && (
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() =>
+                  setEditing(
+                    (current) =>
+                      !current,
+                  )
+                }
+              >
+                <Pencil className="size-4" />
+                Edit campaign
+              </Button>
+            )}
+
+          {!campaign.archivedAt && (
+            <>
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() =>
+                  navigate(
+                    `/campaigns/${campaign.id}/team`,
+                  )
+                }
+              >
+                <Users className="size-4" />
+                Manage Team
+              </Button>
+
+              <Button
+                className="rounded-xl bg-blue-600 hover:bg-blue-700"
+                onClick={() =>
+                  navigate(
+                    `/assets/new?campaignId=${campaign.id}`,
+                  )
+                }
+              >
+                <Plus className="size-4" />
+                New asset
+              </Button>
+            </>
+          )}
+
           {canEdit && (
             <Button
               variant="outline"
-              className="rounded-xl"
+              disabled={
+                archiveSaving
+              }
+              className={
+                campaign.archivedAt
+                  ? "rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                  : "rounded-xl border-slate-300 text-slate-700 hover:bg-slate-100"
+              }
               onClick={() =>
-                setEditing(
-                  (current) =>
-                    !current,
-                )
+                void handleArchiveToggle()
               }
             >
-              <Pencil className="size-4" />
-              Edit campaign
+              {campaign.archivedAt ? (
+                <RotateCcw className="size-4" />
+              ) : (
+                <Archive className="size-4" />
+              )}
+
+              {campaign.archivedAt
+                ? "Restore campaign"
+                : "Archive campaign"}
             </Button>
           )}
-
-          <Button
-            variant="outline"
-            className="rounded-xl"
-            onClick={() =>
-              navigate(
-                `/campaigns/${campaign.id}/team`,
-              )
-            }
-          >
-            <Users className="size-4" />
-            Manage Team
-          </Button>
-
-          <Button
-            className="rounded-xl bg-blue-600 hover:bg-blue-700"
-            onClick={() =>
-              navigate(
-                `/assets/new?campaignId=${campaign.id}`,
-              )
-            }
-          >
-            <Plus className="size-4" />
-            New asset
-          </Button>
         </div>
       </section>
 

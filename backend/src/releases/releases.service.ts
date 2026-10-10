@@ -71,6 +71,14 @@ export class ReleasesService {
       );
     }
 
+    if (
+      version.asset.campaign.archivedAt
+    ) {
+      throw new BadRequestException(
+        'Archived campaign is read-only. Restore it before releasing asset versions.',
+      );
+    }
+
     const membership =
       version.asset.campaign.members[0];
 
