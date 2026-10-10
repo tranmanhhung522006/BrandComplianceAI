@@ -123,6 +123,14 @@ export class ScoringService {
           versionId,
           userId,
         );
+
+      if (
+        version.asset.campaign.archivedAt
+      ) {
+        throw new BadRequestException(
+          'Archived campaign is read-only. Restore it before starting scoring.',
+        );
+      }
     } else {
       version =
         await this.prisma.assetVersion.findUnique({
@@ -137,16 +145,6 @@ export class ScoringService {
           `AssetVersion ${versionId} not found`,
         );
       }
-    }
-
-    if (
-      userId !== undefined &&
-      'asset' in version &&
-      version.asset.campaign.archivedAt
-    ) {
-      throw new BadRequestException(
-        'Archived campaign is read-only. Restore it before starting scoring.',
-      );
     }
 
     if (
