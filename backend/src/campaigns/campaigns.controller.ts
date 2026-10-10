@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -37,9 +38,18 @@ export class CampaignsController {
   findAll(
     @CurrentUser()
     user: AuthenticatedUser,
+
+    @Query('archived')
+    archived?: string,
   ) {
+    const archivedFilter =
+      archived === 'all'
+        ? null
+        : archived === 'true';
+
     return this.campaignsService.findAll(
       user.id,
+      archivedFilter,
     );
   }
 
@@ -82,6 +92,39 @@ export class CampaignsController {
       Number(campaignId),
       user.id,
       body,
+    );
+  }
+
+
+  @Patch(':campaignId/archive')
+  archiveCampaign(
+    @Param('campaignId')
+    campaignId: string,
+
+    @CurrentUser()
+    user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.archiveCampaign(
+      Number(
+        campaignId,
+      ),
+      user.id,
+    );
+  }
+
+  @Patch(':campaignId/restore')
+  restoreCampaign(
+    @Param('campaignId')
+    campaignId: string,
+
+    @CurrentUser()
+    user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.restoreCampaign(
+      Number(
+        campaignId,
+      ),
+      user.id,
     );
   }
 
