@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Res,
   StreamableFile,
   UploadedFile,
@@ -57,9 +58,13 @@ export class AssetsController {
   findAll(
     @CurrentUser()
     user: AuthenticatedUser,
+
+    @Query('includeArchived')
+    includeArchived?: string,
   ) {
     return this.assetsService.findAll(
       user.id,
+      includeArchived === 'true',
     );
   }
 
