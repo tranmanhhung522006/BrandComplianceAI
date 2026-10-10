@@ -43,6 +43,12 @@ export function CampaignsPage() {
   const [campaigns, setCampaigns] =
     useState<BackendCampaign[]>([])
 
+  const [
+    showArchived,
+    setShowArchived,
+  ] =
+    useState(false)
+
   const [assets, setAssets] =
     useState<BackendAsset[]>([])
 
@@ -69,8 +75,12 @@ export function CampaignsPage() {
             assetData,
           ] =
             await Promise.all([
-              getCampaigns(),
-              getAssets(),
+              getCampaigns(
+                showArchived,
+              ),
+              getAssets(
+                true,
+              ),
             ])
 
           setCampaigns(
@@ -99,7 +109,9 @@ export function CampaignsPage() {
           setLoading(false)
         }
       },
-      [],
+      [
+        showArchived,
+      ],
     )
 
   useEffect(() => {
@@ -175,8 +187,9 @@ export function CampaignsPage() {
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
             Organize marketing assets
-            into campaigns and monitor
-            their compliance workflow.
+            into campaigns, preserve
+            completed work and monitor
+            the compliance workflow.
           </p>
         </div>
 
@@ -241,6 +254,42 @@ export function CampaignsPage() {
         </div>
       )}
 
+      <div className="mb-6 flex w-fit rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        <Button
+          type="button"
+          variant={
+            !showArchived
+              ? "default"
+              : "ghost"
+          }
+          className="rounded-lg"
+          onClick={() =>
+            setShowArchived(
+              false,
+            )
+          }
+        >
+          Active campaigns
+        </Button>
+
+        <Button
+          type="button"
+          variant={
+            showArchived
+              ? "default"
+              : "ghost"
+          }
+          className="rounded-lg"
+          onClick={() =>
+            setShowArchived(
+              true,
+            )
+          }
+        >
+          Archived campaigns
+        </Button>
+      </div>
+
       <section className="mb-6 grid gap-4 sm:grid-cols-2">
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="flex items-center gap-4 p-5">
@@ -250,7 +299,9 @@ export function CampaignsPage() {
 
             <div>
               <p className="text-sm text-slate-500">
-                Total campaigns
+                {showArchived
+                  ? "Archived campaigns"
+                  : "Active campaigns"}
               </p>
 
               <p className="text-2xl font-semibold">
@@ -287,12 +338,15 @@ export function CampaignsPage() {
         <CardContent className="p-0">
           <div className="border-b border-slate-100 px-6 py-5">
             <h3 className="font-semibold">
-              All campaigns
+              {showArchived
+                ? "Archived campaigns"
+                : "Active campaigns"}
             </h3>
 
             <p className="mt-1 text-sm text-slate-500">
-              Campaigns available to your
-              signed-in account.
+              {showArchived
+                ? "Archived campaigns remain available for audit and can be restored by an Owner or Admin."
+                : "Active campaigns available to your signed-in account."}
             </p>
           </div>
 
@@ -344,28 +398,31 @@ export function CampaignsPage() {
                 <FolderKanban className="mx-auto size-10 text-slate-300" />
 
                 <p className="mt-4 font-medium">
-                  No campaigns yet
+                  {showArchived
+                    ? "No archived campaigns"
+                    : "No campaigns yet"}
                 </p>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Create your first
-                  campaign to begin
-                  organizing marketing
-                  assets.
+                  {showArchived
+                    ? "Archived campaigns will appear here and remain available for traceability."
+                    : "Create your first campaign to begin organizing marketing assets."}
                 </p>
 
-                <Button
-                  className="mt-5 rounded-xl bg-blue-600 hover:bg-blue-700"
-                  onClick={() =>
-                    navigate(
-                      "/campaigns/new",
-                    )
-                  }
-                >
-                  <Plus className="size-4" />
+                {!showArchived && (
+                  <Button
+                    className="mt-5 rounded-xl bg-blue-600 hover:bg-blue-700"
+                    onClick={() =>
+                      navigate(
+                        "/campaigns/new",
+                      )
+                    }
+                  >
+                    <Plus className="size-4" />
 
-                  Create campaign
-                </Button>
+                    Create campaign
+                  </Button>
+                )}
               </div>
             )}
 
@@ -420,9 +477,14 @@ export function CampaignsPage() {
                     </span>
 
                     <span>
-                      {formatDeadline(
-                        campaign.deadline,
-                      )}
+                      {showArchived &&
+                      campaign.archivedAt
+                        ? `Archived ${new Date(
+                            campaign.archivedAt,
+                          ).toLocaleDateString()}`
+                        : formatDeadline(
+                            campaign.deadline,
+                          )}
                     </span>
                   </div>
                 </div>
@@ -448,9 +510,14 @@ export function CampaignsPage() {
                     </div>
 
                     <p className="mt-1 text-sm font-medium">
-                      {formatDeadline(
-                        campaign.deadline,
-                      )}
+                      {showArchived &&
+                      campaign.archivedAt
+                        ? `Archived ${new Date(
+                            campaign.archivedAt,
+                          ).toLocaleDateString()}`
+                        : formatDeadline(
+                            campaign.deadline,
+                          )}
                     </p>
                   </div>
 
