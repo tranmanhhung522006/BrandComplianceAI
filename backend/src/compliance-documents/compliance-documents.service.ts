@@ -133,6 +133,9 @@ export class ComplianceDocumentsService {
           ownerId:
             true,
 
+          archivedAt:
+            true,
+
           members: {
             where: {
               userId,
