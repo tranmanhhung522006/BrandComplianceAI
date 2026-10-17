@@ -164,90 +164,49 @@ function bca_send_file($file) {
     exit;
 }
 
-function bca_build_sso_url() {
-    $secret =
-        bca_sso_secret();
+/**
+ * Sign the current, authenticated WordPress identity on the server only.
+ * The shared secret must never be sent to the browser.
+ */
+function bca_signed_wp_identity() {
+    $secret = bca_sso_secret();
 
     if (!$secret) {
-        wp_die(
-            'BrandComplianceAI SSO secret is not configured.'
-        );
+        wp_die('BrandComplianceAI SSO secret is not configured.');
     }
 
-    $user =
-        wp_get_current_user();
+    $user = wp_get_current_user();
+    $timestamp = (string) time();
+    $wp_user_id = (string) $user->ID;
+    $email = strtolower(trim($user->user_email));
+    $name = $user->display_name ?: $user->user_login;
+    $name_base64 = base64_encode($name);
 
-    $timestamp =
-        (string) time();
+    $payload = implode("\n", [
+        $timestamp,
+        $wp_user_id,
+        $email,
+        $name_base64,
+    ]);
 
-    $wp_user_id =
-        (string) $user->ID;
+    return [
+        'wpUserId' => $wp_user_id,
+        'email' => $email,
+        'nameBase64' => $name_base64,
+        'timestamp' => $timestamp,
+        'signature' => hash_hmac('sha256', $payload, $secret),
+    ];
+}
 
-    $email =
-        strtolower(
-            trim(
-                $user->user_email
-            )
-        );
+function bca_build_sso_url() {
+    $query = http_build_query(
+        bca_signed_wp_identity(),
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
 
-    $name =
-        $user->display_name
-            ?: $user->user_login;
-
-    $name_base64 =
-        base64_encode(
-            $name
-        );
-
-    $payload =
-        implode(
-            "\n",
-            [
-                $timestamp,
-                $wp_user_id,
-                $email,
-                $name_base64,
-            ]
-        );
-
-    $signature =
-        hash_hmac(
-            'sha256',
-            $payload,
-            $secret
-        );
-
-    $query =
-        http_build_query(
-            [
-                'wpUserId' =>
-                    $wp_user_id,
-
-                'email' =>
-                    $email,
-
-                'nameBase64' =>
-                    $name_base64,
-
-                'timestamp' =>
-                    $timestamp,
-
-                'signature' =>
-                    $signature,
-            ],
-            '',
-            '&',
-            PHP_QUERY_RFC3986
-        );
-
-    return
-        home_url(
-            '/api/auth/wordpress/callback'
-        )
-        .
-        '?'
-        .
-        $query;
+    return home_url('/api/auth/wordpress/callback') . '?' . $query;
 }
 
 function bca_handle_app() {
@@ -361,6 +320,8 @@ function bca_handle_app() {
             '<head>',
             '<head><base href="' .
             $base .
+            '"><meta name="bca-wp-nonce" content="' .
+            esc_attr(wp_create_nonce('bca_wordpress_auth')) .
             '">',
             $html
         );
@@ -375,6 +336,115 @@ function bca_handle_app() {
     exit;
 }
 
+/**
+ * These two URLs are WordPress-authenticated BFF endpoints, not public
+ * NestJS endpoints. WordPress owns the login cookie and CSRF nonce.
+ */
+function bca_auth_json_error($status, $message) {
+    status_header($status);
+    nocache_headers();
+    header('Content-Type: application/json; charset=utf-8');
+    echo wp_json_encode(['message' => $message]);
+    exit;
+}
+
+function bca_require_wp_auth_action() {
+    if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        header('Allow: POST');
+        bca_auth_json_error(405, 'Method not allowed');
+    }
+
+    if (!is_user_logged_in()) {
+        bca_auth_json_error(401, 'WordPress session expired');
+    }
+
+    $nonce = $_SERVER['HTTP_X_BCA_WP_NONCE'] ?? '';
+
+    if (
+        !is_string($nonce) ||
+        !wp_verify_nonce($nonce, 'bca_wordpress_auth')
+    ) {
+        bca_auth_json_error(403, 'Invalid WordPress session nonce');
+    }
+}
+
+function bca_forward_backend_response($response) {
+    if (is_wp_error($response)) {
+        bca_auth_json_error(502, 'Backend unavailable');
+    }
+
+    status_header(wp_remote_retrieve_response_code($response));
+    nocache_headers();
+
+    foreach (['content-type', 'location'] as $name) {
+        $value = wp_remote_retrieve_header($response, $name);
+        if (is_string($value) && $value !== '') {
+            header($name . ': ' . $value);
+        }
+    }
+
+    // In particular, forward the HttpOnly bca_session cookie set by NestJS.
+    $cookies = wp_remote_retrieve_header($response, 'set-cookie');
+    foreach ((array) $cookies as $cookie) {
+        if (is_string($cookie) && $cookie !== '') {
+            header('Set-Cookie: ' . $cookie, false);
+        }
+    }
+
+    echo wp_remote_retrieve_body($response);
+    exit;
+}
+
+function bca_handle_wp_session() {
+    bca_require_wp_auth_action();
+
+    // Ignore all browser-supplied identity data. Re-sign the actual WP user.
+    $identity = bca_signed_wp_identity();
+
+    $response = wp_remote_request(
+        bca_backend_url() . '/auth/wordpress/exchange',
+        [
+            'method' => 'POST',
+            'headers' => [
+                'X-BCA-WP-User-ID' => $identity['wpUserId'],
+                'X-BCA-WP-Email' => $identity['email'],
+                'X-BCA-WP-Name-B64' => $identity['nameBase64'],
+                'X-BCA-WP-Timestamp' => $identity['timestamp'],
+                'X-BCA-WP-Signature' => $identity['signature'],
+            ],
+            'timeout' => 20,
+            'redirection' => 0,
+        ]
+    );
+
+    bca_forward_backend_response($response);
+}
+
+function bca_handle_wp_logout() {
+    bca_require_wp_auth_action();
+
+    // Clear the WordPress auth session and the NestJS JWT cookie. The
+    // backend JWT is stateless; its normal logout endpoint also clears
+    // this same cookie rather than revoking a server-side token.
+    wp_logout();
+
+    setcookie('bca_session', '', [
+        'expires' => time() - 3600,
+        'path' => '/',
+        'secure' => is_ssl(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
+    nocache_headers();
+    header('Content-Type: application/json; charset=utf-8');
+    echo wp_json_encode([
+        'message' => 'Logged out successfully',
+        'loginUrl' => wp_login_url(home_url('/app/')),
+    ]);
+    exit;
+}
+
 function bca_handle_api_proxy() {
     $api_path =
         get_query_var(
@@ -384,6 +454,16 @@ function bca_handle_api_proxy() {
     if (
         $api_path === ''
     ) {
+        return;
+    }
+
+    if ($api_path === 'auth/wordpress/session') {
+        bca_handle_wp_session();
+        return;
+    }
+
+    if ($api_path === 'auth/wordpress/logout') {
+        bca_handle_wp_logout();
         return;
     }
 
@@ -508,89 +588,7 @@ function bca_handle_api_proxy() {
             $args
         );
 
-    if (
-        is_wp_error(
-            $response
-        )
-    ) {
-        status_header(
-            502
-        );
-
-        header(
-            'Content-Type: application/json'
-        );
-
-        echo wp_json_encode(
-            [
-                'statusCode' =>
-                    502,
-
-                'message' =>
-                    'Backend unavailable',
-
-                'error' =>
-                    'Bad Gateway',
-            ]
-        );
-
-        exit;
-    }
-
-    $status =
-        wp_remote_retrieve_response_code(
-            $response
-        );
-
-    status_header(
-        $status
-    );
-
-    $content_type =
-        wp_remote_retrieve_header(
-            $response,
-            'content-type'
-        );
-
-    if ($content_type) {
-        header(
-            'Content-Type: ' .
-            $content_type
-        );
-    }
-
-    $location =
-        wp_remote_retrieve_header(
-            $response,
-            'location'
-        );
-
-    if ($location) {
-        header(
-            'Location: ' .
-            $location
-        );
-    }
-
-    $set_cookie =
-        wp_remote_retrieve_header(
-            $response,
-            'set-cookie'
-        );
-
-    if ($set_cookie) {
-        header(
-            'Set-Cookie: ' .
-            $set_cookie,
-            false
-        );
-    }
-
-    echo wp_remote_retrieve_body(
-        $response
-    );
-
-    exit;
+    bca_forward_backend_response($response);
 }
 
 function bca_template_redirect() {

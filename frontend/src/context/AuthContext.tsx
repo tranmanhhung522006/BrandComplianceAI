@@ -19,6 +19,30 @@ const APP_BASE =
 const WORDPRESS_SSO_ENABLED =
   APP_BASE !== "/"
 
+/**
+ * WordPress renders this nonce server-side into the app shell.
+ * It is tied to the active WordPress login session and must be sent
+ * for both SSO refresh and logout.
+ */
+function getWordPressAuthNonce(): string | null {
+  if (typeof document === "undefined") {
+    return null
+  }
+
+  return document
+    .querySelector<HTMLMetaElement>(
+      'meta[name="bca-wp-nonce"]',
+    )
+    ?.content ?? null
+}
+
+function wordpressAuthHeaders(): HeadersInit {
+  const nonce = getWordPressAuthNonce()
+  return nonce
+    ? { "X-BCA-WP-Nonce": nonce }
+    : {}
+}
+
 export type CampaignRole =
   | "MAKER"
   | "CHECKER"
@@ -175,6 +199,8 @@ export function AuthProvider({
             {
               method:
                 "POST",
+
+              headers: wordpressAuthHeaders(),
 
               credentials:
                 "include",
@@ -496,6 +522,8 @@ export function AuthProvider({
                 {
                   method:
                     "POST",
+
+                  headers: wordpressAuthHeaders(),
 
                   credentials:
                     "include",
